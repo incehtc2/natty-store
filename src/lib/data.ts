@@ -1,14 +1,16 @@
 export type Product = {
   id: string;
   name: string;
-  category: "kadin" | "erkek";
-  type: "ayakkabi" | "canta";
+  category: string;
+  type: string;
   price: number;
   originalPrice?: number;
   image: string;
   description: string;
   isNew?: boolean;
   badge?: string;
+  stock?: number;
+  [key: string]: unknown;
 };
 
 export const products: Product[] = [
@@ -82,7 +84,7 @@ export const products: Product[] = [
     id: "10", name: "Kahve Deri Çanta", category: "kadin", type: "canta",
     price: 3200,
     image: "/images/kadin/kahve-mini.jpg",
-    description: "Kahve renkli deri çanta. Kompakt tasarımı ve altın metal aksesuarlarıyla şıklığın simgesi.",
+    description: "Kahverengi deri çanta. Kompakt tasarımı ve altın metal aksesuarlarıyla şıklığın simgesi.",
     isNew: false,
   },
   {

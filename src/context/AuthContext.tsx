@@ -1,38 +1,26 @@
 "use client";
 
-import { createContext, useContext, useState, useEffect, ReactNode } from "react";
+import { createContext, useContext, useState, useEffect, useCallback, ReactNode } from "react";
+import { supabase } from "@/lib/supabase";
+import type { User as SupabaseUser } from "@supabase/supabase-js";
 
 export type Address = {
-  id: string;
-  baslik: string;
-  isim: string;
-  soyisim: string;
-  telefon: string;
-  adres: string;
-  ilce: string;
-  sehir: string;
-  postaKodu: string;
-  varsayilan: boolean;
+  id: string; baslik: string; isim: string; soyisim: string;
+  telefon: string; adres: string; ilce: string; sehir: string;
+  postaKodu: string; varsayilan: boolean;
 };
 
 export type Order = {
-  id: string;
-  tarih: string;
+  id: string; tarih: string;
   durum: "hazirlaniyor" | "kargoda" | "teslim_edildi" | "iptal";
   toplam: number;
   urunler: { name: string; quantity: number; price: number; image: string; size?: number | null }[];
 };
 
 export type User = {
-  id: string;
-  isim: string;
-  soyisim: string;
-  email: string;
-  telefon: string;
-  dogumTarihi: string;
-  createdAt: string;
-  adresler: Address[];
-  siparisler: Order[];
+  id: string; isim: string; soyisim: string; email: string;
+  telefon: string; dogumTarihi: string; createdAt: string;
+  adresler: Address[]; siparisler: Order[];
 };
 
 type AuthContextType = {
@@ -41,153 +29,184 @@ type AuthContextType = {
   login: (email: string, password: string) => Promise<void>;
   register: (data: { isim: string; soyisim: string; email: string; telefon: string; password: string }) => Promise<void>;
   logout: () => void;
-  updateProfile: (data: Partial<Pick<User, "isim" | "soyisim" | "telefon" | "dogumTarihi">>) => void;
-  addAddress: (addr: Omit<Address, "id">) => void;
-  updateAddress: (id: string, addr: Omit<Address, "id">) => void;
-  removeAddress: (id: string) => void;
-  setDefaultAddress: (id: string) => void;
+  updateProfile: (data: Partial<Pick<User, "isim" | "soyisim" | "telefon" | "dogumTarihi">>) => Promise<void>;
+  addAddress: (addr: Omit<Address, "id">) => Promise<void>;
+  updateAddress: (id: string, addr: Omit<Address, "id">) => Promise<void>;
+  removeAddress: (id: string) => Promise<void>;
+  setDefaultAddress: (id: string) => Promise<void>;
+  refreshOrders: () => Promise<void>;
+  loadUserData: () => Promise<void>;
 };
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-const STORAGE_KEY = "natty_users";
-const SESSION_KEY = "natty_session";
+function mapProfile(
+  sbUser: SupabaseUser,
+  profile: { isim: string; soyisim: string; telefon: string | null; dogum_tarihi: string | null } | null
+): User {
+  return {
+    id: sbUser.id,
+    isim: profile?.isim || "",
+    soyisim: profile?.soyisim || "",
+    email: sbUser.email || "",
+    telefon: profile?.telefon || "",
+    dogumTarihi: profile?.dogum_tarihi || "",
+    createdAt: sbUser.created_at,
+    adresler: [],
+    siparisler: [],
+  };
+}
 
-function getUsers(): (User & { password: string })[] {
-  if (typeof window === "undefined") return [];
-  try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]"); } catch { return []; }
-}
-function saveUsers(users: (User & { password: string })[]) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(users));
-}
-function getSession(): string | null {
-  if (typeof window === "undefined") return null;
-  return localStorage.getItem(SESSION_KEY);
+function mapAddresses(
+  rows: { id: string; baslik: string; isim: string; soyisim: string; telefon: string; adres: string; ilce: string; sehir: string; posta_kodu: string; varsayilan: boolean }[]
+): Address[] {
+  return rows.map(a => ({
+    id: a.id, baslik: a.baslik, isim: a.isim, soyisim: a.soyisim,
+    telefon: a.telefon, adres: a.adres, ilce: a.ilce, sehir: a.sehir,
+    postaKodu: a.posta_kodu, varsayilan: a.varsayilan,
+  }));
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
-  useEffect(() => {
-    const email = getSession();
-    if (email) {
-      const found = getUsers().find(u => u.email === email);
-      if (found) {
-        const { password: _, ...rest } = found;
-        setUser(rest);
-      }
-    }
-    setIsLoading(false);
+  const loadProfile = useCallback(async (sbUser: SupabaseUser) => {
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("isim,soyisim,telefon,dogum_tarihi")
+      .eq("id", sbUser.id)
+      .single();
+    setUser(mapProfile(sbUser, profile));
   }, []);
 
-  const syncUser = (email: string) => {
-    const found = getUsers().find(u => u.email === email);
-    if (found) {
-      const { password: _, ...rest } = found;
-      setUser(rest);
-    }
-  };
+  const loadUserData = useCallback(async () => {
+    const { data: { user: sbUser } } = await supabase.auth.getUser();
+    if (!sbUser) return;
+    const [addrRes, ordersRes] = await Promise.all([
+      supabase.from("addresses").select("*").eq("user_id", sbUser.id).order("created_at", { ascending: false }),
+      supabase.from("orders").select("id,created_at,durum,toplam,order_items(name,quantity,price,image,size)").eq("user_id", sbUser.id).order("created_at", { ascending: false }),
+    ]);
+    const adresler = mapAddresses(addrRes.data || []);
+    const siparisler: Order[] = (ordersRes.data || []).map(o => ({
+      id: o.id, tarih: o.created_at, durum: o.durum, toplam: o.toplam,
+      urunler: (o.order_items || []).map((i: { name: string; quantity: number; price: number; image: string; size: number | null }) => ({
+        name: i.name, quantity: i.quantity, price: i.price, image: i.image, size: i.size,
+      })),
+    }));
+    setUser(prev => prev ? { ...prev, adresler, siparisler } : null);
+  }, []);
+
+  useEffect(() => {
+    let mounted = true;
+
+    supabase.auth.getSession().then(async ({ data: { session } }) => {
+      if (!mounted) return;
+      if (session?.user) await loadProfile(session.user);
+      setIsLoading(false);
+    });
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_, session) => {
+      if (!mounted) return;
+      if (session?.user) {
+        await loadProfile(session.user);
+      } else {
+        setUser(null);
+      }
+    });
+
+    return () => {
+      mounted = false;
+      subscription.unsubscribe();
+    };
+  }, [loadProfile]);
 
   const login = async (email: string, password: string) => {
-    const users = getUsers();
-    const found = users.find(u => u.email.toLowerCase() === email.toLowerCase() && u.password === password);
-    if (!found) throw new Error("E-posta veya şifre hatalı.");
-    localStorage.setItem(SESSION_KEY, found.email);
-    const { password: _, ...rest } = found;
-    setUser(rest);
+    const { error, data } = await supabase.auth.signInWithPassword({ email, password });
+    if (error) throw new Error(error.message === "Invalid login credentials" ? "E-posta veya şifre hatalı." : error.message);
+    if (data.user) await loadProfile(data.user);
   };
 
   const register = async (data: { isim: string; soyisim: string; email: string; telefon: string; password: string }) => {
-    const users = getUsers();
-    if (users.find(u => u.email.toLowerCase() === data.email.toLowerCase())) {
-      throw new Error("Bu e-posta adresi zaten kayıtlı.");
+    const { error, data: authData } = await supabase.auth.signUp({
+      email: data.email, password: data.password,
+      options: { data: { isim: data.isim, soyisim: data.soyisim, telefon: data.telefon } },
+    });
+    if (error) throw new Error(error.message === "User already registered" ? "Bu e-posta adresi zaten kayıtlı." : error.message);
+    if (authData.user) {
+      await supabase.from("profiles").upsert({ id: authData.user.id, isim: data.isim, soyisim: data.soyisim, telefon: data.telefon || null });
+      await loadProfile(authData.user);
     }
-    const newUser: User & { password: string } = {
-      id: `U-${Date.now()}`,
-      isim: data.isim,
-      soyisim: data.soyisim,
-      email: data.email,
-      telefon: data.telefon,
-      dogumTarihi: "",
-      createdAt: new Date().toISOString(),
-      adresler: [],
-      siparisler: [],
-      password: data.password,
-    };
-    saveUsers([...users, newUser]);
-    localStorage.setItem(SESSION_KEY, newUser.email);
-    const { password: _, ...rest } = newUser;
-    setUser(rest);
   };
 
-  const logout = () => {
-    localStorage.removeItem(SESSION_KEY);
-    setUser(null);
-  };
+  const logout = async () => { await supabase.auth.signOut(); setUser(null); };
 
-  const updateProfile = (data: Partial<Pick<User, "isim" | "soyisim" | "telefon" | "dogumTarihi">>) => {
+  const updateProfile = async (data: Partial<Pick<User, "isim" | "soyisim" | "telefon" | "dogumTarihi">>) => {
     if (!user) return;
-    const users = getUsers();
-    const updated = users.map(u => u.email === user.email ? { ...u, ...data } : u);
-    saveUsers(updated);
-    syncUser(user.email);
+    await supabase.from("profiles").update({
+      ...(data.isim && { isim: data.isim }),
+      ...(data.soyisim && { soyisim: data.soyisim }),
+      ...(data.telefon !== undefined && { telefon: data.telefon }),
+      ...(data.dogumTarihi !== undefined && { dogum_tarihi: data.dogumTarihi }),
+    }).eq("id", user.id);
+    setUser(prev => prev ? { ...prev, ...data } : null);
   };
 
-  const addAddress = (addr: Omit<Address, "id">) => {
+  const addAddress = async (addr: Omit<Address, "id">) => {
     if (!user) return;
-    const users = getUsers();
-    const newAddr: Address = { ...addr, id: `A-${Date.now()}` };
-    const updated = users.map(u => {
-      if (u.email !== user.email) return u;
-      const adresler = addr.varsayilan
-        ? [...u.adresler.map(a => ({ ...a, varsayilan: false })), newAddr]
-        : [...u.adresler, newAddr];
-      return { ...u, adresler };
+    if (addr.varsayilan) await supabase.from("addresses").update({ varsayilan: false }).eq("user_id", user.id);
+    await supabase.from("addresses").insert({
+      user_id: user.id, baslik: addr.baslik, isim: addr.isim, soyisim: addr.soyisim,
+      telefon: addr.telefon, adres: addr.adres, ilce: addr.ilce, sehir: addr.sehir,
+      posta_kodu: addr.postaKodu, varsayilan: addr.varsayilan,
     });
-    saveUsers(updated);
-    syncUser(user.email);
+    const { data } = await supabase.from("addresses").select("*").eq("user_id", user.id).order("created_at", { ascending: false });
+    setUser(prev => prev ? { ...prev, adresler: mapAddresses(data || []) } : null);
   };
 
-  const updateAddress = (id: string, addr: Omit<Address, "id">) => {
+  const updateAddress = async (id: string, addr: Omit<Address, "id">) => {
     if (!user) return;
-    const users = getUsers();
-    const updated = users.map(u => {
-      if (u.email !== user.email) return u;
-      const adresler = u.adresler.map(a => {
-        if (a.id !== id) return addr.varsayilan ? { ...a, varsayilan: false } : a;
-        return { ...addr, id };
-      });
-      return { ...u, adresler };
-    });
-    saveUsers(updated);
-    syncUser(user.email);
+    if (addr.varsayilan) await supabase.from("addresses").update({ varsayilan: false }).eq("user_id", user.id);
+    await supabase.from("addresses").update({
+      baslik: addr.baslik, isim: addr.isim, soyisim: addr.soyisim, telefon: addr.telefon,
+      adres: addr.adres, ilce: addr.ilce, sehir: addr.sehir, posta_kodu: addr.postaKodu, varsayilan: addr.varsayilan,
+    }).eq("id", id);
+    const { data } = await supabase.from("addresses").select("*").eq("user_id", user.id).order("created_at", { ascending: false });
+    setUser(prev => prev ? { ...prev, adresler: mapAddresses(data || []) } : null);
   };
 
-  const removeAddress = (id: string) => {
+  const removeAddress = async (id: string) => {
     if (!user) return;
-    const users = getUsers();
-    const updated = users.map(u =>
-      u.email === user.email ? { ...u, adresler: u.adresler.filter(a => a.id !== id) } : u
-    );
-    saveUsers(updated);
-    syncUser(user.email);
+    await supabase.from("addresses").delete().eq("id", id);
+    setUser(prev => prev ? { ...prev, adresler: prev.adresler.filter(a => a.id !== id) } : null);
   };
 
-  const setDefaultAddress = (id: string) => {
+  const setDefaultAddress = async (id: string) => {
     if (!user) return;
-    const users = getUsers();
-    const updated = users.map(u =>
-      u.email === user.email
-        ? { ...u, adresler: u.adresler.map(a => ({ ...a, varsayilan: a.id === id })) }
-        : u
-    );
-    saveUsers(updated);
-    syncUser(user.email);
+    await supabase.from("addresses").update({ varsayilan: false }).eq("user_id", user.id);
+    await supabase.from("addresses").update({ varsayilan: true }).eq("id", id);
+    const { data } = await supabase.from("addresses").select("*").eq("user_id", user.id).order("created_at", { ascending: false });
+    setUser(prev => prev ? { ...prev, adresler: mapAddresses(data || []) } : null);
+  };
+
+  const refreshOrders = async () => {
+    if (!user) return;
+    const { data } = await supabase
+      .from("orders")
+      .select("id,created_at,durum,toplam,order_items(name,quantity,price,image,size)")
+      .eq("user_id", user.id)
+      .order("created_at", { ascending: false });
+    const siparisler: Order[] = (data || []).map(o => ({
+      id: o.id, tarih: o.created_at, durum: o.durum, toplam: o.toplam,
+      urunler: (o.order_items || []).map((i: { name: string; quantity: number; price: number; image: string; size: number | null }) => ({
+        name: i.name, quantity: i.quantity, price: i.price, image: i.image, size: i.size,
+      })),
+    }));
+    setUser(prev => prev ? { ...prev, siparisler } : null);
   };
 
   return (
-    <AuthContext.Provider value={{ user, isLoading, login, register, logout, updateProfile, addAddress, updateAddress, removeAddress, setDefaultAddress }}>
+    <AuthContext.Provider value={{ user, isLoading, login, register, logout, updateProfile, addAddress, updateAddress, removeAddress, setDefaultAddress, refreshOrders, loadUserData }}>
       {children}
     </AuthContext.Provider>
   );

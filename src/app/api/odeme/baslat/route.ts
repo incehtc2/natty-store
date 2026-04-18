@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { createClient } from "@supabase/supabase-js";
 
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const Iyzipay = require("iyzipay");
@@ -9,63 +10,66 @@ const iyzipay = new Iyzipay({
   uri: "https://sandbox-api.iyzipay.com",
 });
 
+function supabaseAdmin() {
+  return createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!
+  );
+}
+
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { buyer, adres, items, total } = body;
+    const { alici, teslimatAdresi, sepet, toplam } = body;
 
-    const basketItems = items.map((item: { id: string; name: string; category: string; price: number; quantity: number }) => ({
-      id: item.id,
-      name: item.name,
-      category1: item.category === "kadin" || item.category === "erkek" ? "Ayakkabı & Çanta" : "Aksesuar",
-      itemType: Iyzipay.BASKET_ITEM_TYPE.PHYSICAL,
-      price: (item.price * item.quantity).toFixed(2),
-    }));
+    const conversationId = `natty-${Date.now()}`;
 
     const request = {
       locale: Iyzipay.LOCALE.TR,
-      conversationId: `natty-${Date.now()}`,
-      price: total.toFixed(2),
-      paidPrice: total.toFixed(2),
+      conversationId,
+      price: toplam.toFixed(2),
+      paidPrice: toplam.toFixed(2),
       currency: Iyzipay.CURRENCY.TRY,
-      basketId: `BASKET-${Date.now()}`,
+      basketId: conversationId,
       paymentGroup: Iyzipay.PAYMENT_GROUP.PRODUCT,
       callbackUrl: `${process.env.NEXT_PUBLIC_BASE_URL}/api/odeme/sonuc`,
       enabledInstallments: [1, 2, 3, 6, 9],
       buyer: {
         id: `U-${Date.now()}`,
-        name: buyer.isim,
-        surname: buyer.soyisim,
-        gsmNumber: buyer.telefon,
-        email: buyer.email,
-        identityNumber: buyer.tcNo,
-        registrationAddress: adres.adresSatiri,
-        city: adres.sehir,
+        name: alici?.isim || "Misafir",
+        surname: alici?.soyisim || "Kullanici",
+        gsmNumber: alici?.telefon || "+905350000000",
+        email: alici?.email || "misafir@natty.com",
+        identityNumber: alici?.tcKimlik || "11111111111",
+        registrationAddress: teslimatAdresi?.adres || "N/A",
+        city: teslimatAdresi?.sehir || "Istanbul",
         country: "Turkey",
-        zipCode: adres.postaKodu || "34000",
         ip: req.headers.get("x-forwarded-for") || "85.34.78.112",
       },
       shippingAddress: {
-        contactName: `${buyer.isim} ${buyer.soyisim}`,
-        city: adres.sehir,
+        contactName: `${alici?.isim || "Misafir"} ${alici?.soyisim || ""}`,
+        city: teslimatAdresi?.sehir || "Istanbul",
         country: "Turkey",
-        address: adres.adresSatiri,
-        zipCode: adres.postaKodu || "34000",
+        address: teslimatAdresi?.adres || "N/A",
       },
       billingAddress: {
-        contactName: `${buyer.isim} ${buyer.soyisim}`,
-        city: adres.sehir,
+        contactName: `${alici?.isim || "Misafir"} ${alici?.soyisim || ""}`,
+        city: teslimatAdresi?.sehir || "Istanbul",
         country: "Turkey",
-        address: adres.adresSatiri,
-        zipCode: adres.postaKodu || "34000",
+        address: teslimatAdresi?.adres || "N/A",
       },
-      basketItems,
+      basketItems: sepet.map((item: { id: string; name: string; price: number; quantity: number }) => ({
+        id: item.id,
+        name: item.name,
+        category1: "Moda",
+        itemType: Iyzipay.BASKET_ITEM_TYPE.PHYSICAL,
+        price: (item.price * item.quantity).toFixed(2),
+      })),
     };
 
     const result = await new Promise<Record<string, string>>((resolve, reject) => {
       iyzipay.checkoutFormInitialize.create(request, (err: Error, res: Record<string, string>) => {
-        if (err) reject(err);
-        else resolve(res);
+        if (err) reject(err); else resolve(res);
       });
     });
 
@@ -73,9 +77,34 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: result.errorMessage || "Ödeme başlatılamadı" }, { status: 400 });
     }
 
+    const sb = supabaseAdmin();
+
+    const { data: order } = await sb.from("orders").insert({
+      id: conversationId,
+      user_id: alici?.userId || "00000000-0000-0000-0000-000000000000",
+      durum: "hazirlaniyor",
+      toplam,
+      iyzico_token: result.token,
+    }).select().single();
+
+    if (order) {
+      await sb.from("order_items").insert(
+        sepet.map((item: { id: string; name: string; price: number; quantity: number; size?: number | null; image?: string }) => ({
+          order_id: conversationId,
+          product_id: item.id || null,
+          name: item.name,
+          price: item.price,
+          quantity: item.quantity,
+          size: item.size || null,
+          image: item.image || null,
+        }))
+      );
+    }
+
     return NextResponse.json({
       checkoutFormContent: result.checkoutFormContent,
       token: result.token,
+      orderId: conversationId,
     });
   } catch (err) {
     console.error("Ödeme başlatma hatası:", err);

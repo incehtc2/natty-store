@@ -1,8 +1,10 @@
 import Link from "next/link";
 import Image from "next/image";
+import { getProducts } from "@/lib/queries";
 import ProductCard from "../components/ProductCard";
 import NewsletterForm from "../components/NewsletterForm";
-import { kampanyaUrunleri, yeniUrunler } from "../lib/data";
+
+export const revalidate = 300;
 
 const MARQUEE = [
   "EL İŞÇİLİĞİ", "HAKİKİ DERİ", "TÜRK TASARIMI", "2026 KOLEKSİYONU",
@@ -10,7 +12,19 @@ const MARQUEE = [
   "2026 KOLEKSİYONU", "SINIRLI SAYIDA",
 ];
 
-export default function Home() {
+export default async function Home() {
+  const [rawKampanya, rawYeni] = await Promise.all([
+    getProducts({ kampanya: true }),
+    getProducts({ yeni: true }),
+  ]);
+  const toCard = (p: typeof rawKampanya[0]) => ({
+    id: p.id, name: p.name, category: p.category as "kadin" | "erkek",
+    type: p.type as "ayakkabi" | "canta", price: p.price, image: p.image,
+    description: p.description, badge: p.badge ?? undefined, stock: p.stock ?? 0,
+    originalPrice: p.original_price ?? undefined, isNew: p.is_new,
+  });
+  const kampanyaUrunleri = rawKampanya.map(toCard);
+  const yeniUrunler = rawYeni.map(toCard);
   return (
     <div className="bg-cream">
 

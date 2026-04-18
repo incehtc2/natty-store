@@ -5,15 +5,40 @@ import { ShoppingBag, Search, Menu, X, User, ChevronDown, LogOut, Package, MapPi
 import { useState, useEffect, useRef } from "react";
 import CartSlider from "./CartSlider";
 import AnnouncementBar from "./AnnouncementBar";
+import SearchOverlay from "./SearchOverlay";
 import { useCart } from "../context/CartContext";
 import { useAuth } from "../context/AuthContext";
+
+const NAV_ITEMS = [
+  {
+    label: "KADIN", href: "/kadin",
+    sub: [
+      { label: "Tümü", href: "/kadin" },
+      { label: "Ayakkabı", href: "/kadin?tip=ayakkabi" },
+      { label: "Çanta", href: "/kadin?tip=canta" },
+    ],
+  },
+  {
+    label: "ERKEK", href: "/erkek",
+    sub: [
+      { label: "Tümü", href: "/erkek" },
+      { label: "Ayakkabı", href: "/erkek?tip=ayakkabi" },
+      { label: "Çanta", href: "/erkek?tip=canta" },
+    ],
+  },
+  { label: "KAMPANYA", href: "/kampanya", accent: true, badge: "%30", sub: [] },
+];
 
 export default function Navbar() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
   const [showAnnouncement, setShowAnnouncement] = useState(true);
   const [accountOpen, setAccountOpen] = useState(false);
+  const [megaMenu, setMegaMenu] = useState<string | null>(null);
+  const [expandedCat, setExpandedCat] = useState<string | null>(null);
+  const [searchOpen, setSearchOpen] = useState(false);
   const accountRef = useRef<HTMLDivElement>(null);
+  const megaTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const { cartItems, isCartOpen, openCart, closeCart } = useCart();
   const { user, logout, isLoading } = useAuth();
@@ -40,6 +65,20 @@ export default function Navbar() {
     return () => document.removeEventListener("mousedown", handler);
   }, []);
 
+  const openMega = (label: string) => {
+    if (megaTimer.current) clearTimeout(megaTimer.current);
+    setMegaMenu(label);
+  };
+
+  const closeMega = () => {
+    megaTimer.current = setTimeout(() => setMegaMenu(null), 120);
+  };
+
+  const closeMobile = () => {
+    setIsMobileMenuOpen(false);
+    setExpandedCat(null);
+  };
+
   return (
     <>
       <div className={`fixed top-0 left-0 right-0 z-50 transition-shadow duration-300 ${scrolled ? "shadow-[0_1px_20px_rgba(0,0,0,0.07)]" : ""}`}>
@@ -53,31 +92,52 @@ export default function Navbar() {
               <button className="md:hidden p-1 -ml-1 text-charcoal" onClick={() => setIsMobileMenuOpen(true)}>
                 <Menu size={21} strokeWidth={1.5} />
               </button>
+
               <nav className="hidden md:flex items-center gap-8">
-                {[
-                  { label: "KADIN", href: "/kadin" },
-                  { label: "ERKEK", href: "/erkek" },
-                  { label: "KAMPANYA", href: "/kampanya", accent: true, badge: "%30" },
-                ].map(({ label, href, accent, badge }) => (
-                  <Link
+                {NAV_ITEMS.map(({ label, href, accent, badge, sub }) => (
+                  <div
                     key={href}
-                    href={href}
-                    className={`text-[11px] font-medium tracking-ultra relative group transition-colors duration-200 ${accent ? "text-gold hover:text-gold-light" : "text-charcoal/60 hover:text-charcoal"}`}
+                    className="relative"
+                    onMouseEnter={() => sub.length > 0 ? openMega(label) : undefined}
+                    onMouseLeave={() => sub.length > 0 ? closeMega() : undefined}
                   >
-                    {label}
-                    {badge && (
-                      <span className="absolute -top-2.5 -right-4 bg-gold text-cream text-[8px] px-1.5 py-0.5 rounded-full tracking-normal font-medium leading-none">
-                        {badge}
-                      </span>
+                    <Link
+                      href={href}
+                      className={`flex items-center gap-1 text-[11px] font-medium tracking-ultra relative group transition-colors duration-200 ${accent ? "text-gold hover:text-gold-light" : "text-charcoal/60 hover:text-charcoal"}`}
+                    >
+                      {label}
+                      {badge && (
+                        <span className="absolute -top-2.5 -right-4 bg-gold text-cream text-[8px] px-1.5 py-0.5 rounded-full tracking-normal font-medium leading-none">
+                          {badge}
+                        </span>
+                      )}
+                      {sub.length > 0 && (
+                        <ChevronDown size={10} className={`transition-transform duration-200 ${megaMenu === label ? "rotate-180" : ""}`} />
+                      )}
+                      {!accent && <span className="absolute -bottom-0.5 left-0 w-0 h-px bg-charcoal transition-all duration-300 group-hover:w-full" />}
+                    </Link>
+
+                    {sub.length > 0 && megaMenu === label && (
+                      <div
+                        className="absolute top-full left-0 mt-2 bg-cream border border-light-gray shadow-lg w-44 py-1.5 z-50"
+                        onMouseEnter={() => openMega(label)}
+                        onMouseLeave={closeMega}
+                      >
+                        {sub.map(s => (
+                          <Link
+                            key={s.href}
+                            href={s.href}
+                            className="flex items-center px-4 py-2.5 text-[11px] text-charcoal/60 hover:text-charcoal hover:bg-cream-dark transition-colors"
+                          >
+                            {s.label}
+                          </Link>
+                        ))}
+                      </div>
                     )}
-                    {!accent && <span className="absolute -bottom-0.5 left-0 w-0 h-px bg-charcoal transition-all duration-300 group-hover:w-full" />}
-                  </Link>
+                  </div>
                 ))}
               </nav>
             </div>
-
-
-
 
             {/* Logo */}
             <Link href="/" className="absolute left-1/2 -translate-x-1/2 flex items-center gap-1 text-[28px] font-brand text-charcoal hover:text-charcoal/75 transition-colors duration-300 leading-none select-none">
@@ -99,11 +159,10 @@ export default function Navbar() {
 
             {/* Sağ ikonlar */}
             <div className="flex-1 flex items-center justify-end gap-4">
-              <button className="hidden sm:flex text-charcoal/50 hover:text-charcoal transition-colors duration-200">
+              <button onClick={() => setSearchOpen(true)} className="hidden sm:flex text-charcoal/50 hover:text-charcoal transition-colors duration-200">
                 <Search size={18} strokeWidth={1.5} />
               </button>
 
-              {/* Hesap */}
               {!isLoading && (
                 <div className="relative" ref={accountRef}>
                   {user ? (
@@ -161,7 +220,6 @@ export default function Navbar() {
                 </div>
               )}
 
-              {/* Sepet */}
               <button onClick={openCart} className="relative text-charcoal/50 hover:text-charcoal transition-colors duration-200">
                 <ShoppingBag size={18} strokeWidth={1.5} />
                 {totalItems > 0 && (
@@ -177,24 +235,50 @@ export default function Navbar() {
 
       {/* Mobil Menü */}
       <div className={`fixed inset-0 z-[60] transition-all duration-500 ${isMobileMenuOpen ? "visible" : "invisible"}`}>
-        <div className={`absolute inset-0 bg-charcoal/50 transition-opacity duration-400 ${isMobileMenuOpen ? "opacity-100" : "opacity-0"}`} onClick={() => setIsMobileMenuOpen(false)} />
+        <div className={`absolute inset-0 bg-charcoal/50 transition-opacity duration-400 ${isMobileMenuOpen ? "opacity-100" : "opacity-0"}`} onClick={closeMobile} />
         <div className={`absolute top-0 left-0 h-full w-[300px] bg-cream flex flex-col transition-transform duration-500 ease-in-out ${isMobileMenuOpen ? "translate-x-0" : "-translate-x-full"}`}>
           <div className="flex items-center justify-between px-6 h-16 border-b border-light-gray">
-            <Link href="/" className="text-2xl font-brand leading-none" onClick={() => setIsMobileMenuOpen(false)}>NATTY</Link>
-            <button onClick={() => setIsMobileMenuOpen(false)} className="text-charcoal/50 hover:text-charcoal transition-colors">
+            <Link href="/" className="text-2xl font-brand leading-none" onClick={closeMobile}>NATTY</Link>
+            <button onClick={closeMobile} className="text-charcoal/50 hover:text-charcoal transition-colors">
               <X size={21} strokeWidth={1.5} />
             </button>
           </div>
 
-          <nav className="flex flex-col px-8 pt-8 gap-6">
-            {[
-              { label: "Kadın", href: "/kadin" },
-              { label: "Erkek", href: "/erkek" },
-              { label: "Kampanya", href: "/kampanya", accent: true },
-            ].map(({ label, href, accent }) => (
-              <Link key={href} href={href} className={`text-xl font-serif tracking-wide transition-colors ${accent ? "text-gold" : "text-charcoal/75 hover:text-charcoal"}`} onClick={() => setIsMobileMenuOpen(false)}>
-                {label}
-              </Link>
+          <nav className="flex flex-col px-8 pt-8 gap-1">
+            {NAV_ITEMS.map(({ label, href, accent, sub }) => (
+              <div key={href}>
+                <div className="flex items-center justify-between py-2">
+                  <Link
+                    href={href}
+                    className={`text-xl font-serif tracking-wide transition-colors ${accent ? "text-gold" : "text-charcoal/75 hover:text-charcoal"}`}
+                    onClick={sub.length === 0 ? closeMobile : undefined}
+                  >
+                    {label.charAt(0) + label.slice(1).toLowerCase()}
+                  </Link>
+                  {sub.length > 0 && (
+                    <button
+                      onClick={() => setExpandedCat(expandedCat === label ? null : label)}
+                      className="p-1 text-warm-gray hover:text-charcoal transition-colors"
+                    >
+                      <ChevronDown size={15} className={`transition-transform duration-200 ${expandedCat === label ? "rotate-180" : ""}`} />
+                    </button>
+                  )}
+                </div>
+                {sub.length > 0 && expandedCat === label && (
+                  <div className="pl-4 pb-2 flex flex-col gap-0.5 border-l border-light-gray ml-1">
+                    {sub.map(s => (
+                      <Link
+                        key={s.href}
+                        href={s.href}
+                        onClick={closeMobile}
+                        className="py-2 text-sm text-warm-gray hover:text-charcoal transition-colors"
+                      >
+                        {s.label}
+                      </Link>
+                    ))}
+                  </div>
+                )}
+              </div>
             ))}
           </nav>
 
@@ -215,20 +299,20 @@ export default function Navbar() {
                   { href: "/hesabim/siparisler", label: "Siparişlerim" },
                   { href: "/hesabim/adresler", label: "Adreslerim" },
                 ].map(item => (
-                  <Link key={item.href} href={item.href} className="text-sm text-warm-gray hover:text-charcoal transition-colors" onClick={() => setIsMobileMenuOpen(false)}>
+                  <Link key={item.href} href={item.href} className="text-sm text-warm-gray hover:text-charcoal transition-colors" onClick={closeMobile}>
                     {item.label}
                   </Link>
                 ))}
-                <button onClick={() => { logout(); setIsMobileMenuOpen(false); }} className="text-sm text-warm-gray hover:text-charcoal transition-colors text-left">
+                <button onClick={() => { logout(); closeMobile(); }} className="text-sm text-warm-gray hover:text-charcoal transition-colors text-left">
                   Çıkış Yap
                 </button>
               </>
             ) : (
               <div className="flex gap-3">
-                <Link href="/giris" className="flex-1 border border-charcoal text-charcoal text-center py-2.5 text-[10px] tracking-ultra hover:bg-charcoal hover:text-cream transition-all" onClick={() => setIsMobileMenuOpen(false)}>
+                <Link href="/giris" className="flex-1 border border-charcoal text-charcoal text-center py-2.5 text-[10px] tracking-ultra hover:bg-charcoal hover:text-cream transition-all" onClick={closeMobile}>
                   GİRİŞ
                 </Link>
-                <Link href="/kayit" className="flex-1 bg-charcoal text-cream text-center py-2.5 text-[10px] tracking-ultra hover:bg-charcoal/85 transition-all" onClick={() => setIsMobileMenuOpen(false)}>
+                <Link href="/kayit" className="flex-1 bg-charcoal text-cream text-center py-2.5 text-[10px] tracking-ultra hover:bg-charcoal/85 transition-all" onClick={closeMobile}>
                   KAYIT OL
                 </Link>
               </div>
@@ -242,6 +326,7 @@ export default function Navbar() {
       </div>
 
       <CartSlider isOpen={isCartOpen} onClose={closeCart} />
+      <SearchOverlay open={searchOpen} onClose={() => setSearchOpen(false)} />
     </>
   );
 }

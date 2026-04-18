@@ -148,14 +148,19 @@ export default function OdemePage() {
     setLoading(true);
     setError("");
     try {
-      const res = await fetch("/api/odeme/baslat", {
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api";
+      const token = typeof window !== "undefined" ? localStorage.getItem("natty_token") : null;
+      const res = await fetch(`${apiUrl}/odeme/baslat`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
         body: JSON.stringify({
-          buyer: { isim: form.isim, soyisim: form.soyisim, email: form.email, telefon: form.telefon, tcNo: form.tcNo },
-          adres: { adresSatiri: form.adresSatiri, ilce: form.ilce, sehir: form.sehir, postaKodu: form.postaKodu },
-          items: cartItems.map(i => ({ id: i.id, name: i.name, category: "urun", price: i.price, quantity: i.quantity })),
-          total: cartTotal,
+          alici: { isim: form.isim, soyisim: form.soyisim, telefon: form.telefon, tcKimlik: form.tcNo },
+          teslimatAdresi: { adres: form.adresSatiri, sehir: form.sehir },
+          sepet: cartItems.map(i => ({ id: i.id, name: i.name, price: i.price, quantity: i.quantity, size: i.size, image: i.image })),
+          toplam: cartTotal,
         }),
       });
       const data = await res.json();
