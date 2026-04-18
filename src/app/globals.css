@@ -1,0 +1,100 @@
+@import "tailwindcss";
+
+@font-face {
+  font-family: "Bongita";
+  src: url("/fonts/bongita.otf") format("opentype");
+  font-weight: normal;
+  font-style: normal;
+  font-display: swap;
+}
+
+@theme {
+  /* Fontlar - circular reference önlemek için farklı isimler */
+  --font-sans: var(--font-montserrat), ui-sans-serif, system-ui, sans-serif;
+  --font-serif: var(--font-playfair), ui-serif, Georgia, serif;
+  --font-brand: "Bongita", ui-serif, Georgia, serif;
+
+  /* Renkler */
+  --color-cream: #f7f5f1;
+  --color-cream-dark: #ede9e2;
+  --color-gold: #a8865a;
+  --color-gold-light: #c9a97a;
+  --color-charcoal: #0c0c0c;
+  --color-warm-gray: #6b655d;
+  --color-light-gray: #e2ddd7;
+
+  /* Tracking */
+  --tracking-ultra: 0.3em;
+  --tracking-mega: 0.5em;
+
+  /* Transition durations */
+  --transition-duration-400: 400ms;
+  --transition-duration-600: 600ms;
+  --transition-duration-800: 800ms;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  background-color: var(--color-cream);
+  color: var(--color-charcoal);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+::-webkit-scrollbar { width: 5px; }
+::-webkit-scrollbar-track { background: var(--color-cream); }
+::-webkit-scrollbar-thumb { background: #c8bfb4; border-radius: 2px; }
+::-webkit-scrollbar-thumb:hover { background: var(--color-gold); }
+
+::selection { background: var(--color-gold); color: #fff; }
+
+@utility font-brand {
+  font-family: "Bongita", ui-serif, Georgia, serif;
+}
+
+@keyframes marquee {
+  0%   { transform: translateX(0); }
+  100% { transform: translateX(-50%); }
+}
+.marquee-track {
+  display: flex;
+  width: max-content;
+  animation: marquee 28s linear infinite;
+}
+.marquee-track:hover {
+  animation-play-state: paused;
+}
+
+@keyframes fadeInUp {
+  from { opacity: 0; transform: translateY(18px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.animate-fadeInUp {
+  animation: fadeInUp 0.7s ease forwards;
+}
+
+@keyframes shimmer {
+  0%   { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+@keyframes kenBurns {
+  from { transform: scale(1.0); }
+  to   { transform: scale(1.08); }
+}
+@utility animate-ken-burns {
+  animation: kenBurns 14s ease-in-out infinite alternate;
+}
+
+@keyframes scrollLine {
+  0%   { transform: scaleY(0); transform-origin: top; }
+  50%  { transform: scaleY(1); transform-origin: top; }
+  51%  { transform: scaleY(1); transform-origin: bottom; }
+  100% { transform: scaleY(0); transform-origin: bottom; }
+}
+@utility animate-scroll-line {
+  animation: scrollLine 2s ease-in-out infinite;
+}
