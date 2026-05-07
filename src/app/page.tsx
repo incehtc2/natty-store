@@ -52,9 +52,9 @@ export default async function Home() {
               NATTY · SS 2026
             </p>
             <h1 className="text-6xl md:text-8xl lg:text-[96px] font-serif font-medium text-white leading-[0.95] mb-7 tracking-tight">
-              Zamanın<br />
-              Ötesinde<br />
-              <span className="text-gold">Zarafet</span>
+              Asaletin<br />
+              Modern<br />
+              <span className="text-gold">Yorumu</span>
             </h1>
             <p className="text-base md:text-lg text-white/60 font-light leading-relaxed max-w-md mb-10">
               El işçiliği. Hakiki deri. Her parçada hissedilen ustalık.
